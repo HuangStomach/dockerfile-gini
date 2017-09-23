@@ -10,8 +10,8 @@ ENV LANG='en_US.utf8' \
     COMPOSER_HOME="/usr/local/share/composer"
 
 # Use faster APT mirror
-ADD sources.list /etc/apt/sources.list
-RUN rm -rf /etc/apt/sources.list.d/*
+# ADD sources.list /etc/apt/sources.list
+# RUN rm -rf /etc/apt/sources.list.d/*
     
 # Install cURL
 RUN apt-get -q update && apt-get install -yq curl bash vim supervisor && apt-get -y autoclean && apt-get -y clean

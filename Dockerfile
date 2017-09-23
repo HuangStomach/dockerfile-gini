@@ -1,59 +1,53 @@
-FROM debian:8
-MAINTAINER maintain@geneegroup.com
+FROM ubuntu:16.04
+LABEL maintainer="jipeng.huang@geneegroup.com"
 
-ENV DEBIAN_FRONTEND=noninteractive \
+ENV LANG='en_US.utf8' \
     TERM="xterm-color" \
-    MAIL_HOST="172.17.0.1" \
+    MAIL_HOST="172.17.42.1" \
     MAIL_FROM="sender@gini" \
     GINI_ENV="production" \
     COMPOSER_PROCESS_TIMEOUT=40000 \
     COMPOSER_HOME="/usr/local/share/composer"
+
+# Use faster APT mirror
+ADD sources.list /etc/apt/sources.list
+RUN rm -rf /etc/apt/sources.list.d/*
     
 # Install cURL
-RUN apt-get -q update && apt-get install -yq curl bash vim && apt-get -y autoclean && apt-get -y clean
-
-# Install Locales
-RUN apt-get install -yq locales gettext && \
-    sed -i 's/# en_US.UTF-8/en_US.UTF-8/' /etc/locale.gen && \
-    sed -i 's/# zh_CN.UTF-8/zh_CN.UTF-8/' /etc/locale.gen && \
-    locale-gen && \
-    /usr/sbin/update-locale LANG="en_US.UTF-8" LANGUAGE="en_US:en"
+RUN apt-get -q update && apt-get install -yq curl bash vim supervisor && apt-get -y autoclean && apt-get -y clean
 
 # Install PHP
-RUN apt-get install -yq php5-fpm php5-cli && \
+RUN apt-get install -yq php7.0-fpm php7.0-cli php7.0-dev && \
     apt-get -y autoclean && apt-get -y clean && \
-    sed -i 's/^listen\s*=.*$/listen = 0.0.0.0:9000/' /etc/php5/fpm/pool.d/www.conf && \
-    sed -i 's/^error_log\s*=.*$/error_log = syslog/' /etc/php5/fpm/php-fpm.conf && \
-    sed -i 's/^\;error_log\s*=\s*syslog\s*$/error_log = syslog/' /etc/php5/fpm/php.ini && \
-    sed -i 's/^\;error_log\s*=\s*syslog\s*$/error_log = syslog/' /etc/php5/cli/php.ini
+    sed -i 's/^listen\s*=.*$/listen = 0.0.0.0:9000/' /etc/php/7.0/fpm/pool.d/www.conf && \
+    echo "error_log = /var/log/php7/cgi.log" >> /etc/php/7.0/fpm/php.ini && \
+    echo "cgi.fix_pathinfo = 1" >> /etc/php/7.0/fpm/php.ini && \
+    echo "post_max_size = 50M" >> /etc/php/7.0/fpm/php.ini && \
+    echo "upload_max_filesize = 50M" >> /etc/php/7.0/fpm/php.ini && \
+    echo "session.save_handler = redis" >> /etc/php/7.0/fpm/php.ini && \
+    echo "session.save_path = \"tcp://172.17.42.1:6379\"" >> /etc/php/7.0/fpm/php.ini && \
+    echo "error_log = /var/log/php7/cli.log" >> /etc/php/7.0/cli/php.ini && \
+    echo "session.save_handler = redis" >> /etc/php/7.0/cli/php.ini && \
+    echo "session.save_path = \"tcp://172.17.42.1:6379\"" >> /etc/php/7.0/cli/php.ini
 
-RUN apt-get install -yq php5-intl php5-gd php5-mcrypt php5-mysqlnd php5-redis php5-sqlite php5-curl php5-ldap libyaml-0-2
+RUN mkdir -p /var/log/php7 && \
+    touch /var/log/php7/cgi.log && \
+    touch /var/log/php7/cli.log && \
+    chown -R www-data:www-data /var/log/php7 && \
+    mkdir -p /var/run/php && \
+    touch /var/run/php/php7.0-fpm.pid
+ADD supervisor.php7-fpm.conf /etc/supervisor/conf.d/php7-fpm.conf
 
-RUN export PHP_EXTENSION_DIR=$(echo '<?= PHP_EXTENSION_DIR ?>'|php) && \
-    export PHP_VERSION=$(basename $PHP_EXTENSION_DIR) && \
-    curl -sLo $PHP_EXTENSION_DIR/yaml.so http://files.docker.genee.in/php-$PHP_VERSION/yaml.so && \
-    echo "extension=yaml.so" > /etc/php5/mods-available/yaml.ini && \
-    php5enmod yaml
+RUN apt-get install -yq php7.0-mbstring php7.0-gd php7.0-mcrypt php7.0-mysql php7.0-sqlite3 php7.0-curl php7.0-ldap php7.0-intl php7.0-zip php-redis
 
-# Install Friso
-RUN export PHP_EXTENSION_DIR=$(echo '<?= PHP_EXTENSION_DIR ?>'|php) && \
-    export PHP_VERSION=$(basename $PHP_EXTENSION_DIR) && \
-    curl -sLo /usr/lib/libfriso.so http://files.docker.genee.in/php-$PHP_VERSION/libfriso.so && \
-    curl -sLo $PHP_EXTENSION_DIR/friso.so http://files.docker.genee.in/php-$PHP_VERSION/friso.so && \
-    curl -sL http://files.docker.genee.in/friso-etc.tgz | tar -zxf - -C /etc && \
-    printf "extension=friso.so\n[friso]\nfriso.ini_file=/etc/friso/friso.ini\n" > /etc/php5/mods-available/friso.ini && \
-    php5enmod friso
+RUN pecl install swoole && \
+    echo "extension=swoole.so" > /etc/php/7.0/mods-available/swoole.ini && \
+    phpenmod swoole
 
-# Install ZeroMQ
-RUN export PHP_EXTENSION_DIR=$(echo '<?= PHP_EXTENSION_DIR ?>'|php) && \
-    export PHP_VERSION=$(basename $PHP_EXTENSION_DIR) && \
-    apt-get install -yq libzmq3 && apt-get -y autoclean && apt-get -y clean && \
-    curl -sLo $PHP_EXTENSION_DIR/zmq.so http://files.docker.genee.in/php-$PHP_VERSION/zmq.so && \
-    printf "extension=zmq.so\n" > /etc/php5/mods-available/zmq.ini && \
-    ldconfig && php5enmod zmq
-
-# Install NodeJS
-RUN apt-get install -yq npm && ln -sf /usr/bin/nodejs /usr/bin/node && npm install -g less less-plugin-clean-css uglify-js
+RUN apt-get -y install libyaml-dev && \
+    printf '\n' | pecl install yaml-2.0.2 && \
+    echo "extension=yaml.so" > /etc/php/7.0/mods-available/yaml.ini && \
+    phpenmod yaml
 
 # Install msmtp-mta
 RUN apt-get install -yq msmtp-mta && apt-get -y autoclean && apt-get -y clean
@@ -80,4 +74,4 @@ GINI_MODULE_BASE_PATH="/data/gini-modules"
 
 ADD start /start
 WORKDIR /data/gini-modules
-ENTRYPOINT ["/start"]
+CMD ["/usr/bin/supervisord", "--nodaemon", "-c", "/etc/supervisor/supervisord.conf"]

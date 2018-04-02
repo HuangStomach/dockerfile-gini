@@ -52,8 +52,6 @@ RUN mkdir -p /usr/local/share && git clone https://github.com/iamfat/gini /usr/l
     && /usr/local/bin/composer update --prefer-dist --no-dev \
     && mkdir -p /data/gini-modules
 
-EXPOSE 9000
-
 ENV PATH="/usr/local/share/gini/bin:/usr/local/share/composer/vendor/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
 GINI_MODULE_BASE_PATH="/data/gini-modules"
 
